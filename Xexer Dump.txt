@@ -1,49 +1,20 @@
 --!nolint
 --!nocheck
 
--- Xexer Dump: Complete Edition (Full English & .txt Output)
-
-local __ok, __err = pcall(function()
 local Players = game:GetService("Players")
 local LP = Players.LocalPlayer
 
--- Clean up residual UI instances
-pcall(function()
-    for _, root in ipairs({LP.PlayerGui, game:GetService("CoreGui")}) do
-        for _, v in ipairs(root:GetChildren()) do
-            if v.Name == "TestFarmUI" or v.Name == "Cascade" then v:Destroy() end
-        end
-    end
-    pcall(function()
-        for _, v in ipairs(game:GetService("CoreGui"):GetDescendants()) do
-            if v:IsA("ScreenGui") and v.Name:find("WindUI") == 1 then v:Destroy() end
-        end
-    end)
-    if gethui then
-        local g = gethui()
-        for _, v in ipairs(g:GetChildren()) do
-            if v.Name:find("WindUI") == 1 or v.Name == "Rayfield" or v.Name == "Rayfield-Old" or v.Name == "Cascade" then
-                pcall(function() v:Destroy() end)
-            end
-        end
-    end
+-- 1. Load WindUI Library Directly
+local WindUISuccess, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 end)
 
--- Load WindUI Library
-local WindUI = nil
-do
-    local okUI, errUI = pcall(function()
-        WindUI = (loadstring or load)(game:HttpGet(
-            "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
-        ))()
-    end)
-    if not WindUI then
-        warn("Xexer Dump: WindUI load failed: " .. tostring(errUI))
-        return
-    end
+if not WindUISuccess or not WindUI then
+    warn("[Xexer Dump Error] Failed to fetch or run WindUI library:", WindUI)
+    return
 end
 
--- Mono Theme setup
+-- 2. Theme Configuration
 WindUI:AddTheme({
     Name = "Mono",
     Accent = Color3.fromHex("#18181b"),
@@ -66,13 +37,11 @@ WindUI:AddTheme({
     ElementBackgroundTransparency = 0,
 })
 
-local LOGO_ID = "rbxassetid://76489696691275"
-
--- Create Main Window
+-- 3. Create Main Window
 local Window = WindUI:CreateWindow({
     Title = "Xexer Dump",
     Author = "by 777",
-    Icon = LOGO_ID,
+    Icon = "rbxassetid://76489696691275",
     Theme = "Mono",
     Transparent = true,
     Topbar = { Height = 52, ButtonsType = "Mac" },
@@ -81,13 +50,10 @@ local Window = WindUI:CreateWindow({
 
 Window:EditOpenButton({
     Title = "Xexer Dump",
-    Icon = LOGO_ID,
+    Icon = "rbxassetid://76489696691275",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
-    Color = ColorSequence.new(
-        Color3.fromHex("FFFFFF"),
-        Color3.fromHex("3A3A3A")
-    ),
+    Color = ColorSequence.new(Color3.fromHex("FFFFFF"), Color3.fromHex("3A3A3A")),
     OnlyMobile = false,
     Enabled = true,
     Draggable = true,
@@ -102,11 +68,11 @@ Window:Tag({
 
 pcall(function() Window:SetBackgroundTransparency(0.2) end)
 
--- Gather all game services and sort alphabetically (A-Z)
+-- 4. Protected Service Retrieval (Safe against Restricted Services)
 local serviceList = {}
 for _, service in ipairs(game:GetChildren()) do
     pcall(function()
-        if service and service.Name then
+        if service and typeof(service) == "Instance" and service.Name then
             table.insert(serviceList, service.Name)
         end
     end)
@@ -116,7 +82,7 @@ table.insert(serviceList, "PlayerScripts")
 table.insert(serviceList, "LocalPlayer Character")
 
 table.sort(serviceList, function(a, b)
-    return a:lower() < b:lower()
+    return tostring(a):lower() < tostring(b):lower()
 end)
 
 local TARGET_OPTIONS = { "[All Services - Full Dump]" }
@@ -124,7 +90,7 @@ for _, name in ipairs(serviceList) do
     table.insert(TARGET_OPTIONS, name)
 end
 
--- Shared Utility Functions
+-- 5. Helper Functions
 local function formatTree(instance, depth)
     local indent = string.rep("    ", depth)
     local branch = depth > 0 and "|-- " or ""
@@ -162,8 +128,8 @@ local SettingsToolkit = {
 
 local toolCfgSec = ToolTab:Section({
     Opened = true,
-    Title = "One-Click Master Options",
-    Desc = "Complete indexing, boilerplate, and full game dump in one click"
+    Title = "Master Options",
+    Desc = "Complete indexing, boilerplate, and full game dump"
 })
 
 toolCfgSec:Toggle({
@@ -226,7 +192,6 @@ toolActSec:Button({
             end
 
             local totalObjects = 0
-            local decompiledCount = 0
 
             setStatusToolkit("Indexing Remotes, Modules & Prompts...")
             task.wait(0.01)
@@ -279,7 +244,9 @@ end
             table.insert(fullOutput, "local remotes = {}")
             for i, rem in ipairs(remotesFound) do
                 pcall(function()
-                    table.insert(fullOutput, string.format("remotes[%d] = %s -- Class: %s", i, getCleanPath(rem), rem.ClassName))
+                    local path = getCleanPath(rem)
+                    local callSyntax = rem:IsA("RemoteFunction") and ":InvokeServer(...)" or ":FireServer(...)"
+                    table.insert(fullOutput, string.format("remotes[%d] = %s -- Class: %s | Usage: %s%s", i, path, rem.ClassName, path, callSyntax))
                 end)
             end
 
@@ -310,7 +277,6 @@ end
                     table.insert(fullOutput, formatTree(child, depth))
 
                     if SettingsToolkit.DecompileSource and child:IsA("ModuleScript") then
-                        decompiledCount = decompiledCount + 1
                         local indent = string.rep("    ", depth + 1)
                         table.insert(fullOutput, indent .. "/* [SOURCE CODE: " .. child.Name .. "] */")
                         local success, code = pcall(function()
@@ -508,4 +474,30 @@ cfgSec:Toggle({
 
 local actionSec = DumpTab:Section({
     Opened = true,
-    Title = "Execut
+    Title = "Execution & Status",
+    Desc = "Execute process and monitor real-time output"
+})
+
+local statusParaExplorer = actionSec:Paragraph({
+    Title = "Current Status",
+    Desc = "Ready"
+})
+
+_G.OnDumpStatusExplorer = function(msg)
+    pcall(function() statusParaExplorer:SetDesc(tostring(msg)) end)
+end
+
+actionSec:Button({
+    Title = "Start Dump (.txt)",
+    Desc = "Scan service hierarchy tree and save as .txt to workspace",
+    Callback = function()
+        if SettingsExplorer.IsDumping then
+            WindUI:Notify({ Title = "Warning", Content = "A dump process is already running.", Icon = "alert-triangle", Duration = 3 })
+            return
+        end
+
+        SettingsExplorer.IsDumping = true
+        _G.OnDumpStatusExplorer("Analyzing target hierarchy...")
+
+        task.spawn(function()
+            local tar
